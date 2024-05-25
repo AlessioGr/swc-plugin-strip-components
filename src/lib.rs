@@ -2,7 +2,7 @@ use swc_core::common::comments::Comments;
 use swc_core::common::DUMMY_SP;
 use swc_core::ecma::{
     ast::Program,
-    visit::{FoldWith, VisitMut},
+    visit::{VisitMut},
 };
 use swc_core::ecma::ast::{Callee, Expr, ExprOrSpread, KeyValueProp, Lit, Null};
 use swc_core::ecma::visit::VisitMutWith;
@@ -16,9 +16,6 @@ pub fn loadable_components_plugin(mut program: Program, _metadata: TransformPlug
 
     program
 }
-
-
-
 
 
 pub fn loadable_transform<C>(comments: C) -> impl VisitMut
@@ -46,12 +43,9 @@ impl<C> VisitMut for Loadable<C>
             return e.visit_mut_children_with(self);
         }
 
-        // Since you have mutable access and need to possibly modify children,
-        // You need to use a mutable pattern in if let:
         if let Expr::Call(call_expr) = &mut *e.value {
             println!("Running plugin transform on KeyValueProp: {:?}", call_expr.callee);
-            // callee is identifier
-            // Correctly handling the Callee type
+
             if let Callee::Expr(expr) = &call_expr.callee {
                 if let Expr::Ident(ident) = &**expr {
                     println!("Callee is an identifier: {:?}", ident);

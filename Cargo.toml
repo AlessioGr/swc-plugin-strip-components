@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Alessio Gravili"]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [profile.release]
 lto = true
@@ -13,6 +13,7 @@ lto = true
 [dependencies]
 serde = "1"
 swc_core = { version = "0.92.*", features = ["ecma_plugin_transform"] }
+swc_ecma_parser = "0.144.1"
 # .cargo/config defines few alias to build plugin.
 # cargo build-wasi generates wasm-wasi32 binary
 # cargo build-wasm32 generates wasm32-unknown-unknown binary.
