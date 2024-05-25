@@ -12,26 +12,25 @@ pub struct TransformVisitor;
 // https://rustdoc.swc.rs/swc_ecma_visit/trait.VisitMut.html
 impl VisitMut for TransformVisitor {
     fn visit_mut_key_value_prop(&mut self, e: &mut KeyValueProp) {
+        e.visit_mut_children_with(self);
+
         if !e.value.is_call() {
-            return e.visit_mut_children_with(self);
+            return
         }
 
         if let Expr::Call(call_expr) = &mut *e.value {
-            println!("Running plugin transform on KeyValueProp: {:?}", call_expr.callee);
-
             if let Callee::Expr(expr) = &call_expr.callee {
                 if let Expr::Ident(ident) = &**expr {
-                    println!("Callee is an identifier: {:?}", ident);
 
                     if ident.sym.to_string() == "Component" {
-                        println!("Yes3 {:?}", call_expr);
+                        println!("Is component! {:?}", call_expr);
                         call_expr.args = vec![ExprOrSpread::from(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))))];
                         return;
                     }
                 }
             }
         }
-        return e.visit_mut_children_with(self);
+        return
     }
 }
 
