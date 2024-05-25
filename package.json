@@ -1,5 +1,5 @@
 {
-    "name": "swc-strip-components",
+    "name": "swc-plugin-strip-components",
     "version": "0.1.0",
     "description": "Simple swc plugin to nuke components added to props",
     "author": "Alessio Gravili",
