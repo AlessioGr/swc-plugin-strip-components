@@ -3,7 +3,7 @@
     "version": "0.1.0",
     "description": "Simple swc plugin to nuke components added to props",
     "author": "Alessio Gravili",
-    "license": "ISC",
+    "license": "MIT",
     "keywords": ["swc-plugin"],
     "main": "swc_plugin_strip_components.wasm",
     "scripts": {
