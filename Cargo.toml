@@ -1,14 +1,12 @@
 [package]
 name = "swc_plugin_strip_components"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Alessio Gravili"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[profile.release]
-lto = true
 
 [dependencies]
 serde = "1"
