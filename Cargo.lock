@@ -1485,7 +1485,7 @@ dependencies = [
 
 [[package]]
 name = "swc_plugin_strip_components"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "serde",
  "swc_core",

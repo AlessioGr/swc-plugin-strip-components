@@ -1,6 +1,6 @@
 [package]
 name = "swc_plugin_strip_components"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 authors = ["Alessio Gravili"]
 
