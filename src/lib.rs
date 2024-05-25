@@ -26,12 +26,12 @@ impl VisitMut for TransformVisitor {
                     if ident.sym.to_string() == "Component" {
                         println!("Yes3 {:?}", call_expr);
                         call_expr.args = vec![ExprOrSpread::from(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))))];
+                        return;
                     }
                 }
             }
-            call_expr.visit_mut_children_with(self);
         }
-
+        return e.visit_mut_children_with(self);
     }
 }
 
