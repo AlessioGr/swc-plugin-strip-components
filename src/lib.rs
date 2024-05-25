@@ -22,7 +22,7 @@ impl VisitMut for TransformVisitor {
             if let Callee::Expr(expr) = &call_expr.callee {
                 if let Expr::Ident(ident) = &**expr {
 
-                    if ident.sym.to_string() == "Component" {
+                    if ident.sym.to_string() == "ClientOnly" {
                         println!("Is component! {:?}", call_expr);
                         call_expr.args = vec![ExprOrSpread::from(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))))];
                         return;

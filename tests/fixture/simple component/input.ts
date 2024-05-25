@@ -1,9 +1,5 @@
-type ComponentFn = (C: any) => any
-
-const Component: ComponentFn = (C) => {
-    return C
-}
+import { ClientOnly } from "./utilities";
 
 const test = {
-    hello: Component('world'),
+    hello: ClientOnly('world'),
 }
