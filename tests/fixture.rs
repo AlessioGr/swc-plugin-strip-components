@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use swc_core::ecma::{transforms::testing::test_fixture, visit::as_folder};
-use swc_plugin_strip_components::loadable_transform;
+use swc_plugin_strip_components::TransformVisitor;
 use swc_ecma_parser::{Syntax, TsConfig};
 
 
@@ -20,7 +20,7 @@ fn fixture(input: PathBuf) {
 
     test_fixture(
         ts_syntax(),
-        &|t| as_folder(loadable_transform(t.comments.clone())),
+        &|_| as_folder(TransformVisitor),
         &input,
         &output,
         Default::default(),
