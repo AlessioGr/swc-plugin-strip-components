@@ -338,37 +338,6 @@ fn empty_function_body() -> BlockStmt {
     }
 }
 
-/// Transforms named exports (e.g., functions or variables) listed in `export { ... }` statements.
-///
-/// # Parameters
-/// - `module`: The module containing the exports.
-/// - `ident_sym`: The identifier symbol of the export to transform.
-fn transform_named_export(module: &mut Module, ident_sym: &JsWord) {
-    for item in &mut module.body {
-        match item {
-            // Transform function declarations
-            ModuleItem::Stmt(Stmt::Decl(Decl::Fn(func))) => {
-                if &func.ident.sym == ident_sym {
-                    func.function.body = Some(empty_function_body());
-                }
-            },
-            // Transform variable declarations
-            ModuleItem::Stmt(Stmt::Decl(Decl::Var(var))) => {
-                for decl in &mut var.decls {
-                    if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
-                        if sym == ident_sym {
-                            transform_decl_init(decl);
-                        }
-                    }
-                }
-            },
-            _ => {}
-        }
-    }
-}
-
-
-
 
 // This is
 #[plugin_transform]
