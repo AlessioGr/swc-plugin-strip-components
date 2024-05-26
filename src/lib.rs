@@ -118,6 +118,11 @@ impl VisitMut for TransformVisitor {
                         })
                     },
 
+                    // Keep exported function declarations
+                    ModuleItem::Stmt(Stmt::Decl(Decl::Fn(func))) => {
+                        exported_identifiers.contains(&func.ident.sym)
+                    },
+
                     // Retain other items
                     _ => true,
                 });
@@ -176,26 +181,116 @@ fn collect_exported_identifiers(module: &Module) -> HashSet<JsWord> {
 
 
 fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>) {
+    let mut identifiers_to_transform = HashSet::new();
+
+    // First pass: collect identifiers of items that need to be transformed
+    for item in &module.body {
+        match item {
+            // Collect identifiers of export declarations (e.g., `export const myVar = ...;`)
+            //
+            // Example:
+            // export const myVar = 42;
+            // =>
+            // const myVar = null;
+            ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(ref export)) => {
+                if let Decl::Var(var) = &export.decl {
+                    for decl in &var.decls {
+                        if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
+                            identifiers_to_transform.insert(sym.clone());
+                        }
+                    }
+                } else if let Decl::Fn(func) = &export.decl {
+                    identifiers_to_transform.insert(func.ident.sym.clone());
+                }
+            },
+            // Collect identifiers of standalone variable declarations (might be exported in an export { } below, which is
+            // why we need to check exported_identifiers)
+            //
+            // Example:
+            // const myVar = 42;
+            // =>
+            // const myVar = null;
+            ModuleItem::Stmt(Stmt::Decl(Decl::Var(var))) => {
+                for decl in &var.decls {
+                    if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
+                        if exported_identifiers.contains(sym) {
+                            identifiers_to_transform.insert(sym.clone());
+                        }
+                    }
+                }
+            },
+            // Collect identifiers of standalone function declarations (might be exported in an export { } below, which is
+            //             // why we need to check exported_identifiers)
+            //
+            // Example:
+            // function myFunc() {
+            //     return 42;
+            // }
+            // =>
+            // function myFunc() {
+            //     return null;
+            // }
+            ModuleItem::Stmt(Stmt::Decl(Decl::Fn(func))) => {
+                if exported_identifiers.contains(&func.ident.sym) {
+                    identifiers_to_transform.insert(func.ident.sym.clone());
+                }
+            },
+            _ => {}
+        }
+    }
+
+    // Second pass: transform the collected identifiers
     for item in &mut module.body {
         match item {
-            // Transform export declarations
+            // Transform export declarations (e.g., `export const myVar = ...;`)
+            //
+            // Example:
+            // export const myVar = 42;
+            // =>
+            // export const myVar = null;
             ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(ref mut export)) => {
                 if let Decl::Var(var) = &mut export.decl {
                     for decl in &mut var.decls {
-                        transform_decl_init(decl);
+                        if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
+                            if identifiers_to_transform.contains(sym) {
+                                transform_decl_init(decl);
+                            }
+                        }
                     }
                 } else if let Decl::Fn(func) = &mut export.decl {
-                    func.function.body = Some(empty_function_body());
+                    if identifiers_to_transform.contains(&func.ident.sym) {
+                        func.function.body = Some(empty_function_body());
+                    }
                 }
             },
             // Transform standalone variable declarations
+            //
+            // Example:
+            // const myVar = 42;
+            // =>
+            // const myVar = null;
             ModuleItem::Stmt(Stmt::Decl(Decl::Var(var))) => {
                 for decl in &mut var.decls {
                     if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
-                        if exported_identifiers.contains(sym) {
+                        if identifiers_to_transform.contains(sym) {
                             transform_decl_init(decl);
                         }
                     }
+                }
+            },
+            // Transform standalone function declarations
+            //
+            // Example:
+            // function myFunc() {
+            //     return 42;
+            // }
+            // =>
+            // function myFunc() {
+            //     return null;
+            // }
+            ModuleItem::Stmt(Stmt::Decl(Decl::Fn(func))) => {
+                if identifiers_to_transform.contains(&func.ident.sym) {
+                    func.function.body = Some(empty_function_body());
                 }
             },
             _ => {}
@@ -203,6 +298,12 @@ fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>
     }
 }
 
+
+/// Transforms the initializer of a variable declaration to `null` or an empty
+/// function returning `null`.
+///
+/// # Parameters
+/// - `decl`: The variable declarator to transform.
 fn transform_decl_init(decl: &mut VarDeclarator) {
     if let Some(init) = &mut decl.init {
         if matches!(**init, Expr::Arrow(_) | Expr::Fn(_)) {
@@ -223,6 +324,10 @@ fn transform_decl_init(decl: &mut VarDeclarator) {
     }
 }
 
+/// Creates an empty function body that returns `null`.
+///
+/// # Returns
+/// A `BlockStmt` representing an empty function body returning `null`.
 fn empty_function_body() -> BlockStmt {
     BlockStmt {
         span: DUMMY_SP,
@@ -230,6 +335,35 @@ fn empty_function_body() -> BlockStmt {
             span: DUMMY_SP,
             arg: Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP })))),
         })],
+    }
+}
+
+/// Transforms named exports (e.g., functions or variables) listed in `export { ... }` statements.
+///
+/// # Parameters
+/// - `module`: The module containing the exports.
+/// - `ident_sym`: The identifier symbol of the export to transform.
+fn transform_named_export(module: &mut Module, ident_sym: &JsWord) {
+    for item in &mut module.body {
+        match item {
+            // Transform function declarations
+            ModuleItem::Stmt(Stmt::Decl(Decl::Fn(func))) => {
+                if &func.ident.sym == ident_sym {
+                    func.function.body = Some(empty_function_body());
+                }
+            },
+            // Transform variable declarations
+            ModuleItem::Stmt(Stmt::Decl(Decl::Var(var))) => {
+                for decl in &mut var.decls {
+                    if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
+                        if sym == ident_sym {
+                            transform_decl_init(decl);
+                        }
+                    }
+                }
+            },
+            _ => {}
+        }
     }
 }
 
