@@ -20,7 +20,9 @@ fn fixture(input: PathBuf) {
 
     test_fixture(
         ts_syntax(),
-        &|_| as_folder(TransformVisitor),
+        &|tr| as_folder(TransformVisitor{
+            identifier: "ClientOnly".to_string(),
+        }),
         &input,
         &output,
         Default::default(),

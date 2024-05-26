@@ -1488,6 +1488,7 @@ name = "swc_plugin_strip_components"
 version = "0.1.4"
 dependencies = [
  "serde",
+ "serde_json",
  "swc_core",
  "swc_ecma_parser",
  "testing",
