@@ -1,4 +1,6 @@
+use std::collections::HashSet;
 use serde::Deserialize;
+use swc_core::atoms::JsWord;
 use swc_core::common::DUMMY_SP;
 use swc_core::ecma::{
     ast::*,
@@ -12,43 +14,70 @@ use swc_core::plugin::{plugin_transform, proxies::TransformPluginProgramMetadata
 
 
 // Helper function to transform exports
-fn transform_exports(module: &mut Module) {
+fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>) {
     for item in &mut module.body {
-        if let ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(ref mut export)) = item {
-            match &mut export.decl {
-                Decl::Var(var) => {
-                    for decl in &mut var.decls {
-                        if let Some(init) = &decl.init {
-                            if let Expr::Arrow(_) | Expr::Fn(_) = &**init {
-                                decl.init = Some(Box::new(Expr::Arrow(ArrowExpr {
-                                    span: DUMMY_SP,
-                                    params: vec![],
-                                    body: Box::new(BlockStmtOrExpr::Expr(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))))),
-                                    is_async: false,
-                                    is_generator: false,
-                                    return_type: None,
-                                    type_params: None,
-                                })));
-                                continue;
+        match item {
+            ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(ref mut export)) => {
+                match &mut export.decl {
+                    Decl::Var(var) => {
+                        for decl in &mut var.decls {
+                            if let Some(init) = &decl.init {
+                                if let Expr::Arrow(_) | Expr::Fn(_) = &**init {
+                                    decl.init = Some(Box::new(Expr::Arrow(ArrowExpr {
+                                        span: DUMMY_SP,
+                                        params: vec![],
+                                        body: Box::new(BlockStmtOrExpr::Expr(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))))),
+                                        is_async: false,
+                                        is_generator: false,
+                                        return_type: None,
+                                        type_params: None,
+                                    })));
+                                    continue;
+                                }
                             }
+                            decl.init = Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))));
                         }
-                        decl.init = Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))));
-                    }
-                },
-                Decl::Fn(func) => {
-                    func.function.body = Some(BlockStmt {
-                        span: DUMMY_SP,
-                        stmts: vec![Stmt::Return(ReturnStmt {
+                    },
+                    Decl::Fn(func) => {
+                        func.function.body = Some(BlockStmt {
                             span: DUMMY_SP,
-                            arg: Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP })))),
-                        })],
-                    });
-                },
-                _ => {}
-            }
+                            stmts: vec![Stmt::Return(ReturnStmt {
+                                span: DUMMY_SP,
+                                arg: Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP })))),
+                            })],
+                        });
+                    },
+                    _ => {}
+                }
+            },
+            ModuleItem::Stmt(Stmt::Decl(Decl::Var(var))) => {
+                for decl in &mut var.decls {
+                    if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
+                        if exported_identifiers.contains(sym) {
+                            if let Some(init) = &decl.init {
+                                if let Expr::Arrow(_) | Expr::Fn(_) = &**init {
+                                    decl.init = Some(Box::new(Expr::Arrow(ArrowExpr {
+                                        span: DUMMY_SP,
+                                        params: vec![],
+                                        body: Box::new(BlockStmtOrExpr::Expr(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))))),
+                                        is_async: false,
+                                        is_generator: false,
+                                        return_type: None,
+                                        type_params: None,
+                                    })));
+                                    continue;
+                                }
+                            }
+                            decl.init = Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))));
+                        }
+                    }
+                }
+            },
+            _ => {}
         }
     }
 }
+
 
 #[derive(Debug, Deserialize)]
 pub struct TransformVisitor
@@ -120,8 +149,36 @@ impl VisitMut for TransformVisitor {
 
 
             if use_client {
-                module.body.retain(|item| matches!(item, ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(_))));
-                transform_exports(module);
+                // Collect all identifiers that are exported
+                let mut exported_identifiers = HashSet::new();
+                for item in &module.body {
+                    if let ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export)) = item {
+                        for specifier in &export.specifiers {
+                            if let ExportSpecifier::Named(ExportNamedSpecifier { orig, exported, .. }) = specifier {
+                                let ident = match exported {
+                                    Some(ModuleExportName::Ident(ident)) => ident.sym.clone(),
+                                    Some(ModuleExportName::Str(_)) => continue,
+                                    None => match orig {
+                                        ModuleExportName::Ident(ident) => ident.sym.clone(),
+                                        ModuleExportName::Str(_) => continue,
+                                    },
+                                };
+                                exported_identifiers.insert(ident);
+                            }
+                        }
+                    } else if let ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(ExportDecl { decl, .. })) = item {
+                        if let Decl::Var(var) = decl {
+                            for decl in &var.decls {
+                                if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
+                                    exported_identifiers.insert(sym.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Transform the module to retain and modify exported items
+                transform_exports(module, &exported_identifiers);
             }
         }
 
