@@ -12,11 +12,25 @@ use swc_core::plugin::{plugin_transform, proxies::TransformPluginProgramMetadata
 #[derive(Debug, Deserialize)]
 pub struct TransformVisitor
 {
-    pub identifier: String,
+    pub identifier: String
 }
 
 // https://rustdoc.swc.rs/swc_ecma_visit/trait.VisitMut.html
 impl VisitMut for TransformVisitor {
+    /**
+     * This method is responsible for nullifying the props of a function call assigned to a component, if the function name matches the identifier.
+     * E.g. if the identifier is ClientOnly, then this:
+     *
+     * const test = {
+     *   hello: ClientOnly('world'),
+     * }
+     *
+     * will be transformed to
+     *
+     * const test = {
+     *   hello: ClientOnly(null),
+     * }
+     */
     fn visit_mut_key_value_prop(&mut self, e: &mut KeyValueProp) {
         e.visit_mut_children_with(self);
 
