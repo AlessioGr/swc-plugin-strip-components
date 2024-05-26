@@ -1,5 +1,7 @@
 #![feature(box_patterns)]
 
+mod is_client_module;
+
 use std::collections::HashSet;
 use serde::Deserialize;
 use swc_core::atoms::JsWord;
@@ -11,8 +13,7 @@ use swc_core::ecma::{
 use swc_core::ecma::ast::{BlockStmt, Callee, Decl, Expr, ExprOrSpread, ExprStmt, KeyValueProp, Lit, Module, ModuleDecl, ModuleItem, Null, Stmt};
 use swc_core::ecma::visit::VisitMutWith;
 use swc_core::plugin::{plugin_transform, proxies::TransformPluginProgramMetadata};
-
-
+use crate::is_client_module::is_client_module;
 
 
 #[derive(Debug, Deserialize)]
@@ -21,6 +22,8 @@ pub struct TransformVisitor
     pub identifier: String,
     pub lobotomize_use_client_files: bool
 }
+
+
 
 // https://rustdoc.swc.rs/swc_ecma_visit/trait.VisitMut.html
 impl VisitMut for TransformVisitor {
@@ -67,13 +70,12 @@ impl VisitMut for TransformVisitor {
             return;
         }
 
-        if let Program::Module(ref mut module) = program {
-            // Check for "use client" declaration at the top
-            let contains_use_client = module.body.iter().any(|item| {
-                matches!(item, ModuleItem::Stmt(Stmt::Expr(ExprStmt { expr: box Expr::Lit(Lit::Str(Str { value, .. })), .. })) if value.trim().eq_ignore_ascii_case("use client"))
-            });
+        // Check for "use client" declaration at the top
+        let is_client_module = is_client_module(program);
 
-            if contains_use_client {
+        if let Program::Module(ref mut module) = program {
+
+            if is_client_module {
                 // Collect re-exported imports
                 let reexported_imports = collect_reexported_imports(module);
                 // Collect identifiers of items that are exported
