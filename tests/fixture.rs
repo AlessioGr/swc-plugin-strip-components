@@ -22,7 +22,7 @@ fn fixture(input: PathBuf) {
         ts_syntax(),
         &|tr| as_folder(TransformVisitor{
             identifier: "ClientOnly".to_string(),
-            lobotomize_use_client_files: false
+            lobotomize_use_client_files: true // enable it, so we can test and make sure that this does not touch the files, due to them not containing use client
         }),
         &input,
         &output,
