@@ -22,6 +22,25 @@ fn fixture(input: PathBuf) {
         ts_syntax(),
         &|tr| as_folder(TransformVisitor{
             identifier: "ClientOnly".to_string(),
+            lobotomize_use_client_files: false
+        }),
+        &input,
+        &output,
+        Default::default(),
+    );
+}
+
+
+#[testing::fixture("tests/fixture/**/ClientComponentInput.tsx")]
+fn fixture2(input: PathBuf) {
+    let output = input.parent().unwrap().join("ClientComponentOutput.tsx");
+
+
+    test_fixture(
+        ts_syntax(),
+        &|tr| as_folder(TransformVisitor{
+            identifier: "ClientOnly".to_string(),
+            lobotomize_use_client_files: true
         }),
         &input,
         &output,

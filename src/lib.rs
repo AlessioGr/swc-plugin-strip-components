@@ -1,18 +1,60 @@
 use serde::Deserialize;
 use swc_core::common::DUMMY_SP;
 use swc_core::ecma::{
-    ast::Program,
+    ast::*,
     visit::{as_folder, FoldWith, VisitMut},
 };
-use swc_core::ecma::ast::{Callee, Expr, ExprOrSpread, KeyValueProp, Lit, Null};
+use swc_core::ecma::ast::{BlockStmt, Callee, Decl, Expr, ExprOrSpread, ExprStmt, KeyValueProp, Lit, Module, ModuleDecl, ModuleItem, Null, Stmt};
 use swc_core::ecma::visit::VisitMutWith;
 use swc_core::plugin::{plugin_transform, proxies::TransformPluginProgramMetadata};
 
 
+
+
+// Helper function to transform exports
+fn transform_exports(module: &mut Module) {
+    for item in &mut module.body {
+        if let ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(ref mut export)) = item {
+            match &mut export.decl {
+                Decl::Var(var) => {
+                    for decl in &mut var.decls {
+                        if let Some(init) = &decl.init {
+                            if let Expr::Arrow(_) | Expr::Fn(_) = &**init {
+                                decl.init = Some(Box::new(Expr::Arrow(ArrowExpr {
+                                    span: DUMMY_SP,
+                                    params: vec![],
+                                    body: Box::new(BlockStmtOrExpr::Expr(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))))),
+                                    is_async: false,
+                                    is_generator: false,
+                                    return_type: None,
+                                    type_params: None,
+                                })));
+                                continue;
+                            }
+                        }
+                        decl.init = Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))));
+                    }
+                },
+                Decl::Fn(func) => {
+                    func.function.body = Some(BlockStmt {
+                        span: DUMMY_SP,
+                        stmts: vec![Stmt::Return(ReturnStmt {
+                            span: DUMMY_SP,
+                            arg: Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP })))),
+                        })],
+                    });
+                },
+                _ => {}
+            }
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TransformVisitor
 {
-    pub identifier: String
+    pub identifier: String,
+    pub lobotomize_use_client_files: bool
 }
 
 // https://rustdoc.swc.rs/swc_ecma_visit/trait.VisitMut.html
@@ -52,6 +94,39 @@ impl VisitMut for TransformVisitor {
         }
         return
     }
+
+
+    fn visit_mut_program(&mut self, p: &mut Program) {
+        p.visit_mut_children_with(self);
+
+        if !self.lobotomize_use_client_files {
+            return;
+        }
+
+        if let Program::Module(ref mut module) = p {
+            println!("Module11: {:?}", module.body);
+            // Check for "use client" declaration at the top
+            let use_client = module.body.iter().any(|item| {
+                if let ModuleItem::Stmt(Stmt::Expr(ExprStmt { expr, .. })) = item {
+                    if let Expr::Lit(Lit::Str(Str { value, .. })) = &**expr {
+                        // Making the comparison case-insensitive and whitespace-insensitive
+                        return value.trim().eq_ignore_ascii_case("use client");
+                    }
+                }
+                false
+            });
+
+            println!("use_client11: {:?}", use_client);
+
+
+            if use_client {
+                module.body.retain(|item| matches!(item, ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(_))));
+                transform_exports(module);
+            }
+        }
+
+    }
+
 }
 
 
