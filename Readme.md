@@ -164,3 +164,20 @@ const modifiedConfig = {
     };
 ```
 
+Or in Next.js (if you want to break your entire app):
+
+```ts
+const nextConfig = {
+  experimental: {
+    swcPlugins: [
+      [
+        "swc-plugin-strip-components",
+        {
+          identifier: 'Component',
+          lobotomize_use_client_files: false, // set to true, to break your entire next app
+        },
+      ],
+    ]
+  },
+}
+```
