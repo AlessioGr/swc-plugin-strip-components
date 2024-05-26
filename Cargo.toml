@@ -1,7 +1,7 @@
 cargo-features = ["edition2024"]
 [package]
 name = "swc_plugin_strip_components"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 authors = ["Alessio Gravili"]
 
