@@ -133,35 +133,80 @@ impl VisitMut for TransformVisitor {
         }
 
         if let Program::Module(ref mut module) = p {
-            //println!("Module11: {:?}", module.body);
-            // Check for "use client" declaration at the top
-            let use_client = module.body.iter().any(|item| {
-                if let ModuleItem::Stmt(Stmt::Expr(ExprStmt { expr, .. })) = item {
-                    if let Expr::Lit(Lit::Str(Str { value, .. })) = &**expr {
-                        // Making the comparison case-insensitive and whitespace-insensitive
-                        return value.trim().eq_ignore_ascii_case("use client");
+            // Preserve "use client" and strip imports, except re-exported ones
+            let mut has_use_client = false;
+            let mut reexported_imports = HashSet::new();
+
+            // Collect re-exported imports
+            for item in &module.body {
+                if let ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export)) = item {
+                    for specifier in &export.specifiers {
+                        if let ExportSpecifier::Named(ExportNamedSpecifier { orig, exported, .. }) = specifier {
+                            if let Some(ModuleExportName::Ident(ident)) = exported {
+                                reexported_imports.insert(ident.sym.clone());
+                            } else if let ModuleExportName::Ident(ident) = orig {
+                                reexported_imports.insert(ident.sym.clone());
+                            }
+                        }
                     }
                 }
-                false
+            }
+
+            // Filter module body to strip imports and keep necessary parts
+            module.body.retain(|item| {
+                match item {
+                    ModuleItem::Stmt(Stmt::Expr(ExprStmt { expr, .. })) => {
+                        if let Expr::Lit(Lit::Str(Str { value, .. })) = &**expr {
+                            if value.trim().eq_ignore_ascii_case("use client") {
+                                has_use_client = true;
+                                return true;
+                            }
+                        }
+                    }
+                    ModuleItem::ModuleDecl(ModuleDecl::Import(import)) => {
+                        // Retain import if it is re-exported
+                        return import.specifiers.iter().any(|specifier| {
+                            match specifier {
+                                ImportSpecifier::Named(named) => {
+                                    reexported_imports.contains(&named.local.sym)
+                                }
+                                ImportSpecifier::Default(default) => {
+                                    reexported_imports.contains(&default.local.sym)
+                                }
+                                ImportSpecifier::Namespace(namespace) => {
+                                    reexported_imports.contains(&namespace.local.sym)
+                                }
+                            }
+                        });
+                    }
+                    ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export)) => {
+                        // Remove named exports that are not directly re-exporting
+                        return export.specifiers.iter().any(|specifier| {
+                            if let ExportSpecifier::Named(ExportNamedSpecifier { orig, exported, .. }) = specifier {
+                                if let Some(ModuleExportName::Ident(ident)) = exported {
+                                    return reexported_imports.contains(&ident.sym);
+                                } else if let ModuleExportName::Ident(ident) = orig {
+                                    return reexported_imports.contains(&ident.sym);
+                                }
+                            }
+                            false
+                        });
+                    }
+                    _ => {}
+                }
+                true
             });
 
-            //println!("use_client11: {:?}", use_client);
-
-
-            if use_client {
+            if has_use_client {
                 // Collect all identifiers that are exported
                 let mut exported_identifiers = HashSet::new();
                 for item in &module.body {
                     if let ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export)) = item {
                         for specifier in &export.specifiers {
-                            if let ExportSpecifier::Named(ExportNamedSpecifier { orig, exported, .. }) = specifier {
-                                let ident = match exported {
-                                    Some(ModuleExportName::Ident(ident)) => ident.sym.clone(),
-                                    Some(ModuleExportName::Str(_)) => continue,
-                                    None => match orig {
-                                        ModuleExportName::Ident(ident) => ident.sym.clone(),
-                                        ModuleExportName::Str(_) => continue,
-                                    },
+                            if let ExportSpecifier::Named(ExportNamedSpecifier { orig, .. }) = specifier {
+                                let ident = match orig {
+                                    ModuleExportName::Ident(ident) => ident.sym.clone(),
+                                    ModuleExportName::Str(_) => continue,
                                 };
                                 exported_identifiers.insert(ident);
                             }
