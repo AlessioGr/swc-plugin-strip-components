@@ -13,17 +13,20 @@ use swc_core::plugin::{plugin_transform, proxies::TransformPluginProgramMetadata
 
 
 
+
 // Helper function to transform exports
 fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>) {
+    let mut items_to_remove = Vec::new();
+
     for item in &mut module.body {
         match item {
             ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(ref mut export)) => {
                 match &mut export.decl {
                     Decl::Var(var) => {
                         for decl in &mut var.decls {
-                            if let Some(init) = &decl.init {
+                            if let Some(init) = &mut decl.init {
                                 if let Expr::Arrow(_) | Expr::Fn(_) = &**init {
-                                    decl.init = Some(Box::new(Expr::Arrow(ArrowExpr {
+                                    *init = Box::new(Expr::Arrow(ArrowExpr {
                                         span: DUMMY_SP,
                                         params: vec![],
                                         body: Box::new(BlockStmtOrExpr::Expr(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))))),
@@ -31,11 +34,13 @@ fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>
                                         is_generator: false,
                                         return_type: None,
                                         type_params: None,
-                                    })));
-                                    continue;
+                                    }));
+                                } else {
+                                    *init = Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP })));
                                 }
+                            } else {
+                                decl.init = Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))));
                             }
-                            decl.init = Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))));
                         }
                     },
                     Decl::Fn(func) => {
@@ -51,12 +56,16 @@ fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>
                 }
             },
             ModuleItem::Stmt(Stmt::Decl(Decl::Var(var))) => {
-                for decl in &mut var.decls {
+                var.decls.retain_mut(|decl| {
                     if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
-                        if exported_identifiers.contains(sym) {
-                            if let Some(init) = &decl.init {
+                        if !exported_identifiers.contains(sym) {
+                            // Mark this variable declaration for removal
+                            items_to_remove.push(sym.clone());
+                            return false;
+                        } else {
+                            if let Some(init) = &mut decl.init {
                                 if let Expr::Arrow(_) | Expr::Fn(_) = &**init {
-                                    decl.init = Some(Box::new(Expr::Arrow(ArrowExpr {
+                                    *init = Box::new(Expr::Arrow(ArrowExpr {
                                         span: DUMMY_SP,
                                         params: vec![],
                                         body: Box::new(BlockStmtOrExpr::Expr(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))))),
@@ -64,18 +73,34 @@ fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>
                                         is_generator: false,
                                         return_type: None,
                                         type_params: None,
-                                    })));
-                                    continue;
+                                    }));
+                                } else {
+                                    *init = Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP })));
                                 }
+                            } else {
+                                decl.init = Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))));
                             }
-                            decl.init = Some(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))));
                         }
                     }
-                }
+                    true
+                });
             },
             _ => {}
         }
     }
+
+    // Remove marked items
+    module.body.retain(|item| {
+        if let ModuleItem::Stmt(Stmt::Decl(Decl::Var(var))) = item {
+            return var.decls.iter().any(|decl| {
+                if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
+                    return !items_to_remove.contains(&sym);
+                }
+                true
+            });
+        }
+        true
+    });
 }
 
 
@@ -237,7 +262,6 @@ impl VisitMut for TransformVisitor {
                 transform_exports(module, &exported_identifiers);
             }
         }
-
 
     }
 

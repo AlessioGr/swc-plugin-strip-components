@@ -7,6 +7,15 @@ export { MyFnOtherFile2 }  // should be kept
 import { MyFn2 as MyFn2FromAnotherFile } from "../use client/ClientComponentInput"; // should be removed
 
 
+import { lazy } from 'react'
+
+
+const RichTextEditor = lazy(() =>
+    // @ts-ignore
+    import('../use client/ClientComponentOutput').then((module) => ({ default: module.MyFn })),
+) // Should be removed completely.
+
+
 const MyFn = () => {
     return <div>MyFn</div>
 }
