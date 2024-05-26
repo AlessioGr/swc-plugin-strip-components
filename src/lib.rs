@@ -79,12 +79,10 @@ impl VisitMut for TransformVisitor {
                 // Collect identifiers of items that are exported
                 let exported_identifiers = collect_exported_identifiers(module);
 
-
                 // Filter module body to strip unnecessary parts and keep necessary parts. Everything else is retained.
                 module.body.retain(|item| match item {
                     // Keep the "use client" directive
                     ModuleItem::Stmt(Stmt::Expr(ExprStmt { expr: box Expr::Lit(Lit::Str(Str { value, .. })), .. })) if value.trim().eq_ignore_ascii_case("use client") => true,
-
                     // Keep imports that are re-exported
                     ModuleItem::ModuleDecl(ModuleDecl::Import(import)) => import.specifiers.iter().any(|specifier| {
                         match specifier {
@@ -96,39 +94,33 @@ impl VisitMut for TransformVisitor {
                             ImportSpecifier::Namespace(namespace) => reexported_imports.contains(&namespace.local.sym),
                         }
                     }),
-
                     // Keep re-exported named exports
                     ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export)) => export.specifiers.iter().any(|specifier| {
                         matches!(specifier, ExportSpecifier::Named(ExportNamedSpecifier { orig: ModuleExportName::Ident(ident), .. }) if reexported_imports.contains(&ident.sym))
                     }),
-
                     // Keep exported variable declarations
                     ModuleItem::Stmt(Stmt::Decl(Decl::Var(var))) => {
                         var.decls.iter().any(|decl| {
                             if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
                                 // Retain if the variable is exported
                                 return exported_identifiers.contains(&sym);
+                            } else {
+                                return true
                             }
-                            true
                         })
                     },
-
                     // Keep exported function declarations
-                    ModuleItem::Stmt(Stmt::Decl(Decl::Fn(func))) => {
-                        exported_identifiers.contains(&func.ident.sym)
-                    },
-
+                    ModuleItem::Stmt(Stmt::Decl(Decl::Fn(func))) => exported_identifiers.contains(&func.ident.sym),
                     // Retain other items
                     _ => true,
                 });
 
-
-                // Transform the module to retain and modify exported items
+                // Transform the module to modify exported items
                 // The `transform_exports` function processes the remaining items in `module.body`.
                 // It performs the following transformations:
                 // 1. For exported functions, it converts them to empty functions returning `null`.
                 // 2. For exported variables, it sets their values to `null`.
-                // This ensures that any function or variable that is exported remains in the module but is
+                // This ensures that any function or variable that remains in the module is
                 // effectively lobotomized, preventing any actual implementation from being executed while
                 // still allowing other files that import these exports to function without errors.
                 transform_exports(module, &exported_identifiers);
@@ -182,8 +174,9 @@ fn collect_exported_identifiers(module: &Module) -> HashSet<JsWord> {
     exported_identifiers
 }
 
+
 /// Solely handles transformation of items which are retained to be set to null or return null.
-/// This does not handle removing any items from the module body completely
+/// This does not handle removing any items from the module body completely.
 fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>) {
     for item in &mut module.body {
         match item {
@@ -260,7 +253,7 @@ fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>
 
 /// Transforms the initializer of a variable declaration to `null` or an empty
 /// function returning `null`. This handles both constant variables and functions assigned
-/// to variables
+/// to variables.
 ///
 /// # Parameters
 /// - `decl`: The variable declarator to transform.
@@ -302,14 +295,12 @@ fn empty_function_body() -> BlockStmt {
 // This is the entry point
 #[plugin_transform]
 pub fn process_transform(program: Program, _metadata: TransformPluginProgramMetadata) -> Program {
-
     let strip_components_transform: TransformVisitor = serde_json::from_str(
         &_metadata
             .get_transform_plugin_config()
             .expect("failed to get plugin config"),
     )
         .expect("invalid config");
-
 
     program.fold_with(&mut as_folder(strip_components_transform))
 }
