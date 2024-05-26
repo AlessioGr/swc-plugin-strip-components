@@ -79,29 +79,58 @@ impl VisitMut for TransformVisitor {
 
             if contains_use_client {
                 // Collect re-exported imports
-                let mut reexported_imports = collect_reexported_imports(module);
+                let reexported_imports = collect_reexported_imports(module);
+
+                // Collect identifiers of items that are exported
+                let exported_identifiers = collect_exported_identifiers(module);
 
 
-                // Filter module body to strip imports and keep necessary parts
+                // Filter module body to strip unnecessary parts and keep necessary parts. Everything else is retained.
                 module.body.retain(|item| match item {
+                    // Keep the "use client" directive
                     ModuleItem::Stmt(Stmt::Expr(ExprStmt { expr: box Expr::Lit(Lit::Str(Str { value, .. })), .. })) if value.trim().eq_ignore_ascii_case("use client") => true,
+
+                    // Keep imports that are re-exported
                     ModuleItem::ModuleDecl(ModuleDecl::Import(import)) => import.specifiers.iter().any(|specifier| {
                         match specifier {
+                            // Check named imports
                             ImportSpecifier::Named(named) => reexported_imports.contains(&named.local.sym),
+                            // Check default imports
                             ImportSpecifier::Default(default) => reexported_imports.contains(&default.local.sym),
+                            // Check namespace imports
                             ImportSpecifier::Namespace(namespace) => reexported_imports.contains(&namespace.local.sym),
                         }
                     }),
+
+                    // Keep re-exported named exports
                     ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export)) => export.specifiers.iter().any(|specifier| {
                         matches!(specifier, ExportSpecifier::Named(ExportNamedSpecifier { orig: ModuleExportName::Ident(ident), .. }) if reexported_imports.contains(&ident.sym))
                     }),
+
+                    // Keep exported variable declarations
+                    ModuleItem::Stmt(Stmt::Decl(Decl::Var(var))) => {
+                        var.decls.iter().any(|decl| {
+                            if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
+                                // Retain if the variable is exported
+                                return exported_identifiers.contains(&sym);
+                            }
+                            true
+                        })
+                    },
+
+                    // Retain other items
                     _ => true,
                 });
 
-                // Collect exported identifiers
-                let exported_identifiers = collect_exported_identifiers(module);
 
                 // Transform the module to retain and modify exported items
+                // The `transform_exports` function processes the remaining items in `module.body`.
+                // It performs the following transformations:
+                // 1. For exported functions, it converts them to empty functions returning `null`.
+                // 2. For exported variables, it sets their values to `null`.
+                // This ensures that any function or variable that is exported remains in the module but is
+                // effectively lobotomized, preventing any actual implementation from being executed while
+                // still allowing other files that import these exports to function without errors.
                 transform_exports(module, &exported_identifiers);
             }
         }
@@ -145,23 +174,8 @@ fn collect_exported_identifiers(module: &Module) -> HashSet<JsWord> {
 }
 
 
-/// Transforms the module by modifying exported variable initializers to `null`
-/// or an empty function returning `null`, and removes variable declarations
-/// that are not exported.
-///
-/// This function performs the following steps:
-/// 1. Iterates through the module items and processes export declarations to
-///    transform their initializers.
-/// 2. Transforms standalone variable declarations to ensure they are exported,
-///    marking those that are not for removal.
-/// 3. Removes variable declarations that were marked for removal.
-///
-/// # Parameters
-/// - `module`: The module to transform.
-/// - `exported_identifiers`: A set of identifiers that are exported.
-fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>) {
-    let mut items_to_remove = Vec::new();
 
+fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>) {
     for item in &mut module.body {
         match item {
             // Transform export declarations
@@ -176,35 +190,17 @@ fn transform_exports(module: &mut Module, exported_identifiers: &HashSet<JsWord>
             },
             // Transform standalone variable declarations
             ModuleItem::Stmt(Stmt::Decl(Decl::Var(var))) => {
-                var.decls.retain_mut(|decl| {
+                for decl in &mut var.decls {
                     if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
-                        if !exported_identifiers.contains(sym) {
-                            // Mark this variable declaration for removal
-                            items_to_remove.push(sym.clone());
-                            return false;
-                        } else {
+                        if exported_identifiers.contains(sym) {
                             transform_decl_init(decl);
                         }
                     }
-                    true
-                });
+                }
             },
             _ => {}
         }
     }
-
-    // Remove marked items
-    module.body.retain(|item| {
-        if let ModuleItem::Stmt(Stmt::Decl(Decl::Var(var))) = item {
-            return var.decls.iter().any(|decl| {
-                if let Pat::Ident(BindingIdent { id: Ident { sym, .. }, .. }) = &decl.name {
-                    return !items_to_remove.contains(&sym);
-                }
-                true
-            });
-        }
-        true
-    });
 }
 
 fn transform_decl_init(decl: &mut VarDeclarator) {
@@ -240,6 +236,7 @@ fn empty_function_body() -> BlockStmt {
 
 
 
+// This is
 #[plugin_transform]
 pub fn process_transform(program: Program, _metadata: TransformPluginProgramMetadata) -> Program {
 
