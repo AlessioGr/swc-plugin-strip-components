@@ -1,6 +1,8 @@
+# swc-plugin-strip-components
+
 This swc plugin can be used to do one (or both) of 2 things
 
-## lobotomize React 'use client' components in your code
+## 1. Lobotomize React 'use client' components in your code
 
 Sometimes, you may have to import files which import client components on the server. This happens a lot of payload, where the payload config contains both server-side code, as well as client component imports.
 
@@ -11,8 +13,8 @@ That way, code which relies on those imports will not break, and those client co
 Example:
 
 **Input**
-ts
-```
+
+```ts
 'use client'
 
 import './index.scss' // Should be removed
@@ -86,7 +88,7 @@ export { MyFn, MyFn2, MyFn5, someVariable2 };
 
 ```
 
-## nullify arguments to a specified function
+## 2. Nullify arguments to a specified function
 
 This can be useful if this plugin is conditionally enabled, and you only want components (or any code, really) to be available on the client-only (so, if this swc plugin is not enabled).
 
@@ -129,7 +131,7 @@ const Component: Component = (c) => c as any
 pnpm add swc-plugin-strip-components
 ```
 
-then add to your swc config:
+then add it to your swc config:
 
 ```ts
 const modifiedConfig = {
