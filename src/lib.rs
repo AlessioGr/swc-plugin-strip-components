@@ -85,7 +85,7 @@ impl VisitMut for TransformVisitor {
                 if let Expr::Ident(ident) = &**expr {
 
                     if ident.sym == self.identifier {
-                        println!("Is component! {:?}", call_expr);
+                        //println!("Is component! {:?}", call_expr);
                         call_expr.args = vec![ExprOrSpread::from(Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))))];
                         return;
                     }
@@ -104,7 +104,7 @@ impl VisitMut for TransformVisitor {
         }
 
         if let Program::Module(ref mut module) = p {
-            println!("Module11: {:?}", module.body);
+            //println!("Module11: {:?}", module.body);
             // Check for "use client" declaration at the top
             let use_client = module.body.iter().any(|item| {
                 if let ModuleItem::Stmt(Stmt::Expr(ExprStmt { expr, .. })) = item {
@@ -116,7 +116,7 @@ impl VisitMut for TransformVisitor {
                 false
             });
 
-            println!("use_client11: {:?}", use_client);
+            //println!("use_client11: {:?}", use_client);
 
 
             if use_client {
